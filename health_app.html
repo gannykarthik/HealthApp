@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health Hub Dashboard</title>
+    
+    <!-- External Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- 
+    ================================================================
+    CSS STYLES
+    - All styling is contained within this block, simulating a separate .css file.
+    - Includes dark mode theme, glassmorphism card effects, animations, and responsive design.
+    ================================================================
+    -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* bg-gray-900 */
+        }
+        .card {
+            background: rgba(31, 41, 55, 0.6); /* bg-gray-800 with opacity */
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        @keyframes heartbeat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+        .heartbeat-animation { animation: heartbeat 1.5s ease-in-out infinite; }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        
+        .bp-normal, .glucose-normal { color: #4ade80; }
+        .bp-elevated, .glucose-prediabetes { color: #facc15; }
+        .bp-high, .glucose-high { color: #f87171; }
+        .bp-crisis { color: #ef4444; font-weight: bold; }
+
+        /* Spinner for AJAX loading simulation */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-left-color: #60a5fa; /* blue-400 */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        /* Agentic AI Chat Styles */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .agent-message {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        .agent-bubble {
+            background-color: #374151; /* bg-gray-700 */
+            border-radius: 20px;
+            padding: 12px 16px;
+            max-width: 90%;
+        }
+    </style>
+</head>
+<body class="text-gray-200">
+
+    <!-- 
+    ================================================================
+    HTML STRUCTURE (THE VIEW)
+    - This is the main semantic structure of the application.
+    ================================================================
+    -->
+    <div class="flex flex-col lg:flex-row min-h-screen">
+        <!-- Sidebar -->
+        <aside class="w-full lg:w-80 bg-gray-800 p-6 shadow-lg">
+            <div class="flex items-center space-x-3 mb-8">
+                <div class="text-3xl">🤖</div>
+                <h1 class="text-2xl font-bold text-white">Health Agent</h1>
+            </div>
+            <h2 class="text-lg font-semibold mb-4 text-gray-300">Log New Entry</h2>
+            <form id="data-entry-form" class="space-y-4">
+                <input type="date" id="entry-date" class="w-full p-2 border border-gray-600 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                <input type="number" id="hr" placeholder="❤️ Heart Rate (bpm)" class="w-full p-2 border border-gray-600 bg-gray-700 text-white rounded-lg" required>
+                <input type="number" id="systolic" placeholder="🩸 Systolic BP (mmHg)" class="w-full p-2 border border-gray-600 bg-gray-700 text-white rounded-lg" required>
+                <input type="number" id="diastolic" placeholder="🩸 Diastolic BP (mmHg)" class="w-full p-2 border border-gray-600 bg-gray-700 text-white rounded-lg" required>
+                <input type="number" id="glucose" placeholder="🍬 Blood Glucose (mg/dL)" class="w-full p-2 border border-gray-600 bg-gray-700 text-white rounded-lg" required>
+                <input type="number" id="steps" placeholder="👟 Steps Taken" class="w-full p-2 border border-gray-600 bg-gray-700 text-white rounded-lg" required>
+                <label class="block text-sm font-medium text-gray-400">😴 Sleep (hours)</label>
+                <input type="range" id="sleep" min="0" max="16" step="0.5" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Add & Analyze Data</button>
+            </form>
+            <div id="feedback-message" class="mt-4 text-center"></div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-6 lg:p-10 bg-gray-900">
+            <header class="mb-8">
+                <h2 class="text-3xl font-bold text-white">Your Health Dashboard</h2>
+                <p class="text-gray-400" id="dashboard-date">Today's snapshot of your well-being.</p>
+            </header>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6 mb-10">
+                <div class="card rounded-2xl p-6 flex items-center space-x-4"><div class="text-4xl heartbeat-animation">❤️</div><div><p class="text-gray-400">Heart Rate</p><p id="hr-value" class="text-3xl font-bold">... </p></div></div>
+                <div class="card rounded-2xl p-6"><p class="text-gray-400 mb-2">🩸 Blood Pressure</p><p id="bp-value" class="text-3xl font-bold">...</p><p id="bp-category" class="font-semibold mt-1">...</p></div>
+                <div class="card rounded-2xl p-6"><p class="text-gray-400 mb-2">🍬 Glucose</p><p id="glucose-value" class="text-3xl font-bold">...</p><p id="glucose-category" class="font-semibold mt-1">...</p></div>
+                <div class="card rounded-2xl p-6"><p class="text-gray-400 mb-2">👟 Activity</p><p id="steps-value" class="text-3xl font-bold">...</p><p class="font-semibold text-gray-500 mt-1">Steps Today</p></div>
+                <div class="card rounded-2xl p-6 flex flex-col justify-center"><p class="text-gray-400 mb-2">😴 Sleep</p><p id="sleep-value" class="text-3xl font-bold">...</p></div>
+            </div>
+
+            <!-- Agentic AI Section -->
+            <div id="agent-section" class="card rounded-2xl p-6 mb-10 min-h-[250px] flex flex-col">
+                <!-- Content will be dynamically inserted here -->
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="card rounded-2xl p-6"><h3 class="text-xl font-semibold mb-4 text-white">Health Trends</h3><canvas id="health-trends-chart"></canvas></div>
+                <div class="card rounded-2xl p-6"><h3 class="text-xl font-semibold mb-4 text-white">Sleep Analysis</h3><canvas id="sleep-analysis-chart"></canvas></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 
+    ================================================================
+    JAVASCRIPT LOGIC (THE CONTROLLER/MODEL)
+    - All application logic is here, simulating a separate .js file.
+    - Includes data, AJAX simulation, analysis logic, and event listeners.
+    ================================================================
+    -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- 1. DATA STORE (MODEL) ---
+            let healthData = [
+                { date: '2025-10-14', hr: 75, systolic: 125, diastolic: 80, glucose: 110, steps: 7800, sleep: 7.0 },
+                { date: '2025-10-15', hr: 72, systolic: 122, diastolic: 78, glucose: 95, steps: 9500, sleep: 8.0 },
+                { date: '2025-10-16', hr: 80, systolic: 128, diastolic: 85, glucose: 140, steps: 5400, sleep: 6.0 },
+                { date: '2025-10-17', hr: 70, systolic: 118, diastolic: 76, glucose: 88, steps: 11000, sleep: 7.5 },
+                { date: '2025-10-18', hr: 68, systolic: 115, diastolic: 75, glucose: 92, steps: 12050, sleep: 7.5 },
+                { date: '2025-10-19', hr: 74, systolic: 122, diastolic: 79, glucose: 150, steps: 8450, sleep: 7.2 },
+                { date: '2025-10-20', hr: 78, systolic: 135, diastolic: 82, glucose: 205, steps: 6210, sleep: 6.5 },
+            ];
+            
+            // --- 2. UI REFERENCES & CHART INSTANCES ---
+            const form = document.getElementById('data-entry-form');
+            const feedbackMessage = document.getElementById('feedback-message');
+            let trendsChart, sleepChart;
+
+            // --- 3. AGENTIC AI LOGIC ---
+            const agent = {
+                // Helper to add variety to responses
+                _sample: (arr) => arr[Math.floor(Math.random() * arr.length)],
+
+                generateAnalysis: (latest, history) => {
+                    const previous = history.length > 1 ? history[history.length - 2] : null;
+                    const bpAnalysis = agent.getBpAnalysis(latest.systolic, latest.diastolic);
+                    const glucoseAnalysis = agent.getGlucoseAnalysis(latest.glucose);
+
+                    // --- Build a more natural, conversational response ---
+                    let greeting = agent._sample([
+                        `Hello! I've analyzed your entry for ${new Date(latest.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}.`,
+                        `Thanks for logging your data. Here is my analysis for today.`,
+                        `Okay, let's take a look at your numbers from today.`
+                    ]);
+                    let conversationalText = `${greeting}\n\n`;
+
+                    // BP Conversation
+                    let bpIsGood = bpAnalysis.text === 'Normal';
+                    conversationalText += `- Your blood pressure is ${latest.systolic}/${latest.diastolic} (**${bpAnalysis.text}**). `;
+                    if(bpIsGood) {
+                         conversationalText += agent._sample(["Keep up the fantastic work! ", "This is a great reading. ", "Excellent job keeping this in a healthy range. "]);
+                    } else {
+                        if (previous && latest.systolic < previous.systolic) {
+                            conversationalText += "This is an improvement from yesterday, which is a positive sign! ";
+                        } else {
+                            conversationalText += agent._sample(["Let's focus on this. ", "This is a bit higher than we'd like. ", "We should keep a close eye on this reading. "]);
+                        }
+                    }
+                    conversationalText += `${bpAnalysis.summary}\n\n`;
+
+
+                    // Glucose Conversation
+                    let glucoseIsGood = glucoseAnalysis.text === 'Normal';
+                    conversationalText += `- Your blood glucose is ${latest.glucose} mg/dL (**${glucoseAnalysis.text}**). `;
+                     if(glucoseIsGood) {
+                         conversationalText += agent._sample(["Your blood sugar is well-controlled. ", "This is a perfect reading. ", "Great job here. "]);
+                     } else {
+                         if (previous && latest.glucose < previous.glucose) {
+                            conversationalText += "Good to see this is lower than last time! ";
+                         } else {
+                            conversationalText += agent._sample(["This reading is a bit concerning. ", "Let's work on getting this number down. ", "This is higher than your previous reading. "]);
+                         }
+                     }
+                    conversationalText += `${glucoseAnalysis.summary}\n\n`;
+                    
+                    // Overall summary
+                    if(bpIsGood && glucoseIsGood){
+                        conversationalText += `**Overall:** ${agent._sample(["A fantastic report today! You're doing a wonderful job managing your health.", "Everything looks great. Keep up the consistent effort!", "This is a really strong and healthy reading across the board. Well done."])}`;
+                    } else if (!bpIsGood && !glucoseIsGood) {
+                        conversationalText += `**Overall:** ${agent._sample(["Today's numbers are a bit of a challenge, but don't be discouraged.", "Okay, this is a good opportunity to refocus on our goals.", "Let's view this as important feedback to help us get back on track."])}`;
+                    } else {
+                        conversationalText += `**Overall:** ${agent._sample(["A mixed report today, but that's okay.", "We're seeing some good progress alongside areas to focus on.", "Let's build on the positives and work on the challenges."])}`;
+                    }
+
+
+                    return { conversationalText, bpAnalysis, glucoseAnalysis };
+                },
+                
+                suggestWeeklyGoal: (history) => {
+                    const recentData = history.slice(-7);
+                    let highBpCount = 0;
+                    let highGlucoseCount = 0;
+                    recentData.forEach(d => {
+                        if (agent.getBpAnalysis(d.systolic, d.diastolic).text !== 'Normal') highBpCount++;
+                        if (agent.getGlucoseAnalysis(d.glucose).text !== 'Normal') highGlucoseCount++;
+                    });
+
+                    if (highBpCount > highGlucoseCount) {
+                        return { title: "🎯 My Suggested Goal for This Week", text: "Focus on reducing sodium intake. Could we try to avoid processed foods for the next 3 days?" };
+                    } else if (highGlucoseCount > 0) {
+                        return { title: "🎯 My Suggested Goal for This Week", text: "Let's try to limit sugary drinks and refined carbs for the next 3 days. Opting for water can make a big difference." };
+                    } else {
+                        return { title: "🎯 My Suggested Goal for This Week", text: "You're building great momentum! Let's aim for 7,500+ steps on at least 5 days this week to keep it going." };
+                    }
+                },
+
+                getBpAnalysis: (s, d) => {
+                    if (s < 120 && d < 80) return { text: "Normal", class: "bp-normal", summary: "This is a healthy reading.", remedies: ["Continue with your balanced diet and regular physical activity."] };
+                    if (s >= 120 && s <= 129 && d < 80) return { text: "Elevated", class: "bp-elevated", summary: "This is slightly elevated, so it's a good time to focus on lifestyle changes.", remedies: ["Reduce sodium intake and try a 15-minute walk today."] };
+                    if (s >= 180 || d >= 120) return { text: "Crisis", class: "bp-crisis", summary: "This is in a critical range.", remedies: ["**Please contact emergency services immediately.**"] };
+                    if (s >= 130 || d >= 80) return { text: "High", class: "bp-high", summary: "This is considered high, so it's important to manage it.", remedies: ["Focus on the DASH diet and monitor your BP daily. Please consult a doctor."] };
+                    return { text: "N/A", class: "", summary: "", remedies: [] };
+                },
+
+                getGlucoseAnalysis: (g) => {
+                    if (g < 140) return { text: "Normal", class: "glucose-normal", summary: "Your blood sugar is in a healthy range.", remedies: ["Maintain your balanced diet."] };
+                    if (g >= 140 && g <= 199) return { text: "Prediabetes", class: "glucose-prediabetes", summary: "Your blood sugar is higher than normal, which suggests prediabetes.", remedies: ["Limit sugary drinks and refined carbs immediately."] };
+                    if (g >= 200) return { text: "High", class: "glucose-high", summary: "This is high and may indicate diabetes.", remedies: ["Avoid high-glycemic foods and please consult with a doctor."] };
+                    return { text: "N/A", class: "", summary: "", remedies: [] };
+                }
+            };
+
+            // --- 4. AJAX SIMULATION & RENDERING ---
+            const fetchAndRenderAgentResponse = (latestEntry, history) => {
+                const agentContainer = document.getElementById('agent-section');
+                agentContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><div class="spinner"></div><p class="mt-4 text-gray-400">Agent is analyzing your data...</p></div>`;
+
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        const analysis = agent.generateAnalysis(latestEntry, history);
+                        const goal = agent.suggestWeeklyGoal(history);
+                        
+                        agentContainer.innerHTML = `
+                            <h3 class="text-xl font-bold mb-4 text-white">Agent Analysis</h3>
+                            <div class="flex items-start space-x-4">
+                                <div class="text-3xl mt-1">🤖</div>
+                                <div class="agent-message flex-1">
+                                    <div class="agent-bubble">
+                                        <p class="whitespace-pre-wrap">${analysis.conversationalText}</p>
+                                        <p class="text-xs text-gray-400 mt-3">Disclaimer: Not medical advice. Always consult a professional.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="agent-message mt-4">
+                                <h4 class="font-bold text-lg text-white mb-2">${goal.title}</h4>
+                                <p class="text-gray-300 text-sm">${goal.text}</p>
+                            </div>
+                        `;
+                        resolve();
+                    }, 1500); // Simulate 1.5 second network delay
+                });
+            };
+
+            const updateDashboardUI = () => {
+                const latest = healthData[healthData.length - 1];
+                if (!latest) return;
+
+                document.getElementById('hr-value').innerHTML = `${latest.hr} <span class="text-lg font-medium">bpm</span>`;
+                document.getElementById('bp-value').innerHTML = `${latest.systolic}/${latest.diastolic} <span class="text-lg font-medium">mmHg</span>`;
+                document.getElementById('glucose-value').innerHTML = `${latest.glucose} <span class="text-lg font-medium">mg/dL</span>`;
+                document.getElementById('steps-value').textContent = latest.steps.toLocaleString();
+                document.getElementById('sleep-value').innerHTML = `${latest.sleep} <span class="text-lg font-medium">hrs</span>`;
+                
+                const bpCategoryEl = document.getElementById('bp-category');
+                const glucoseCategoryEl = document.getElementById('glucose-category');
+                
+                const bpAnalysis = agent.getBpAnalysis(latest.systolic, latest.diastolic);
+                bpCategoryEl.textContent = bpAnalysis.text;
+                bpCategoryEl.className = `font-semibold mt-1 ${bpAnalysis.class}`;
+
+                const glucoseAnalysis = agent.getGlucoseAnalysis(latest.glucose);
+                glucoseCategoryEl.textContent = glucoseAnalysis.text;
+                glucoseCategoryEl.className = `font-semibold mt-1 ${glucoseAnalysis.class}`;
+
+                const latestDate = new Date(latest.date + 'T00:00:00');
+                document.getElementById('dashboard-date').textContent = `Snapshot for ${latestDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`;
+            };
+
+            const renderCharts = () => {
+                Chart.defaults.color = '#e5e7eb';
+                Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.1)';
+                if (trendsChart) trendsChart.destroy();
+                if (sleepChart) sleepChart.destroy();
+                
+                const labels = healthData.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+                trendsChart = new Chart('health-trends-chart', {
+                    type: 'line',
+                    data: { labels, datasets: [
+                        { label: 'Heart Rate', data: healthData.map(d => d.hr), borderColor: '#f87171', tension: 0.4 },
+                        { label: 'Systolic BP', data: healthData.map(d => d.systolic), borderColor: '#60a5fa', tension: 0.4 },
+                        { label: 'Glucose', data: healthData.map(d => d.glucose), borderColor: '#facc15', tension: 0.4 }
+                    ]},
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                min: 50,
+                                max: 250,
+                                ticks: {
+                                    stepSize: 50
+                                }
+                            }
+                        }
+                    }
+                });
+
+                const lastSleep = healthData[healthData.length - 1].sleep;
+                sleepChart = new Chart('sleep-analysis-chart', {
+                    type: 'doughnut',
+                    data: { labels: ['Deep', 'Light', 'REM'], datasets: [{ data: [(lastSleep * 0.25).toFixed(1), (lastSleep * 0.55).toFixed(1), (lastSleep * 0.20).toFixed(1)], backgroundColor: ['#3b82f6', '#facc15', '#ec4899'] }]},
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            };
+
+            // --- 5. EVENT LISTENERS & INITIALIZATION ---
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const newEntry = {
+                    date: document.getElementById('entry-date').value,
+                    hr: parseInt(document.getElementById('hr').value) || 0,
+                    systolic: parseInt(document.getElementById('systolic').value) || 0,
+                    diastolic: parseInt(document.getElementById('diastolic').value) || 0,
+                    glucose: parseInt(document.getElementById('glucose').value) || 0,
+                    steps: parseInt(document.getElementById('steps').value) || 0,
+                    sleep: parseFloat(document.getElementById('sleep').value) || 0
+                };
+                
+                // Add new data and update dashboard immediately
+                healthData.push(newEntry);
+                healthData.sort((a, b) => new Date(a.date) - new Date(b.date));
+                
+                updateDashboardUI();
+                renderCharts();
+
+                // Trigger Agent analysis
+                await fetchAndRenderAgentResponse(newEntry, healthData);
+
+                form.reset();
+                document.getElementById('entry-date').value = new Date().toISOString().split('T')[0];
+                feedbackMessage.textContent = '✅ Data saved & analyzed!';
+                feedbackMessage.className = 'mt-4 text-center text-green-400 font-semibold';
+                setTimeout(() => feedbackMessage.textContent = '', 3000);
+            });
+
+            // Initial App Load
+            const initialLoad = async () => {
+                updateDashboardUI();
+                renderCharts();
+                await fetchAndRenderAgentResponse(healthData[healthData.length - 1], healthData);
+            };
+            
+            initialLoad();
+        });
+    </script>
+</body>
+</html>
+
